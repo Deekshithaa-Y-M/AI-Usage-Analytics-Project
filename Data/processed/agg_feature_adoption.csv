@@ -1,0 +1,8 @@
+FeatureKey,FeatureName,IsPremium,UsageCount,PremiumAdoptionRate,AvgSatisfactionByFeature
+1,Chat Assistant,False,4372,100.0,4.105475701574265
+2,Document Processing,True,2375,100.0,4.100584112149533
+3,Workflow Automation,True,1582,100.0,4.081993006993007
+4,Code Generation,False,1456,100.0,4.120658135283364
+5,Data Extraction,True,1421,100.0,4.1087044534412955
+6,Summarization,False,1367,100.0,4.066041666666667
+7,Vision Analysis,True,927,100.0,4.078305084745763
