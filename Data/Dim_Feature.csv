@@ -1,0 +1,8 @@
+FeatureKey,FeatureName,FeatureCategory,IsPremium
+1,Chat Assistant,Conversational,False
+2,Document Processing,Document,True
+3,Workflow Automation,Automation,True
+4,Code Generation,Automation,False
+5,Data Extraction,Document,True
+6,Summarization,Conversational,False
+7,Vision Analysis,Vision,True

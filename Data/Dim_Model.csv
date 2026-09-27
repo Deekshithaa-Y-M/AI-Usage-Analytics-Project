@@ -1,0 +1,7 @@
+ModelKey,ModelName,Provider,ModelFamily,ContextWindow,CostPer1kInput,CostPer1kOutput,IsLatest
+1,GPT-4o,OpenAI,GPT,128000,0.005,0.015,True
+2,GPT-4o-mini,OpenAI,GPT,128000,0.00015,0.0006,True
+3,Claude-3.5-Sonnet,Anthropic,Claude,200000,0.003,0.015,True
+4,Claude-3-Haiku,Anthropic,Claude,200000,0.00025,0.00125,True
+5,Gemini-1.5-Pro,Google,Gemini,1000000,0.00125,0.005,True
+6,Gemini-1.5-Flash,Google,Gemini,1000000,7.5e-05,0.0003,True
