@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-usage-analytics-dashboard"
+version = "0.1.0"
+description = "Data and machine-learning pipelines for an AI usage analytics dashboard"
+requires-python = ">=3.10"
+dependencies = [
+    "joblib>=1.3",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+]
+
+[tool.setuptools]
+py-modules = ["data_pipeline", "ml_scoring"]
+package-dir = {"" = "src"}

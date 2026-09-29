@@ -1,5 +1,13 @@
-# Ignore model artifacts
+# Generated model artifacts
 models/*.pkl
+
+# Python build and test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Optional generated data outputs (already tracked snapshot files remain tracked)
+# data/processed/*.csv
 
 # Python cache
 __pycache__/

@@ -216,7 +216,7 @@ def run_pipeline(raw_dir: Path, processed_dir: Path) -> pd.DataFrame:
 def parse_args() -> argparse.Namespace:
     """Parse paths for both the current repository and the target layout."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--raw-dir", type=Path, default=Path("Data"))
+    parser.add_argument("--raw-dir", type=Path, default=Path("data/raw"))
     parser.add_argument("--processed-dir", type=Path, default=Path("data/processed"))
     return parser.parse_args()
 
