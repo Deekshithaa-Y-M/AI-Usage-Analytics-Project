@@ -1,0 +1,14 @@
+# Ignore model artifacts
+models/*.pkl
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Virtual environments
+venv/
+.env
+
+# OS junk
+.DS_Store
+Thumbs.db
