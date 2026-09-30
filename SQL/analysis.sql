@@ -3,8 +3,8 @@
 -- Import the seven raw CSVs as tables named Fact_AI_Usage, Dim_Date,
 -- Dim_Client, Dim_Model, Dim_Feature, Dim_Region, and Dim_Subscription.
 -- DuckDB example:
---   CREATE TABLE Fact_AI_Usage AS SELECT * FROM read_csv_auto('Data/raw/Fact_AI_Usage.csv');
---   CREATE TABLE Dim_Date AS SELECT * FROM read_csv_auto('Data/raw/Dim_Date.csv');
+--   CREATE TABLE Fact_AI_Usage AS SELECT * FROM read_csv_auto('data/raw/Fact_AI_Usage.csv');
+--   CREATE TABLE Dim_Date AS SELECT * FROM read_csv_auto('data/raw/Dim_Date.csv');
 -- Repeat for the remaining six files. In SQLite, use .import in the same
 -- table names. This view reconstructs the analysis grain from those raw tables.
 DROP VIEW IF EXISTS fact_master;

@@ -202,7 +202,7 @@ def run_forecasting(input_path: Path, output_dir: Path) -> dict[str, float | str
 def parse_args() -> argparse.Namespace:
     """Parse input and output paths."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, default=Path("Data/processed/fact_master.csv"))
+    parser.add_argument("--input", type=Path, default=Path("data/processed/fact_master.csv"))
     parser.add_argument("--output-dir", type=Path, default=Path("outputs/forecasts"))
     return parser.parse_args()
 
