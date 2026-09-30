@@ -1,0 +1,466 @@
+// AI Usage Analytics Dashboard - DAX measures
+// Model assumption: the enriched imported fact table is named 'fact_with_ml'.
+// 'Dim_Date'[Date] is the active date dimension relationship for the fact table.
+
+// ============================================================================
+// SECTION 1: VOLUME METRICS
+// ============================================================================
+
+// Counts every usage row in the current filter context.
+[Total Requests] =
+COUNTROWS('fact_with_ml')
+
+// Counts only requests whose service call completed successfully.
+[Total Requests (Success Only)] =
+CALCULATE(
+    [Total Requests],
+    'fact_with_ml'[SuccessFlag] = 1
+)
+
+// Counts requests that did not complete successfully.
+[Failed Requests] =
+CALCULATE(
+    [Total Requests],
+    'fact_with_ml'[SuccessFlag] = 0
+)
+
+// Expresses failed requests as a percentage of all requests.
+[Failure Rate %] =
+DIVIDE([Failed Requests], [Total Requests], 0)
+
+// Re-evaluates request volume from the first day of the current month.
+[Requests MTD] =
+CALCULATE(
+    [Total Requests],
+    DATESMTD('Dim_Date'[Date])
+)
+
+// Re-evaluates request volume from the first day of the current quarter.
+[Requests QTD] =
+CALCULATE(
+    [Total Requests],
+    DATESQTD('Dim_Date'[Date])
+)
+
+// Compares the current request volume with the immediately preceding month.
+[Requests MoM % Change] =
+VAR CurrentRequests = [Total Requests]
+VAR PriorMonthRequests =
+    CALCULATE(
+        [Total Requests],
+        DATEADD('Dim_Date'[Date], -1, MONTH)
+    )
+RETURN
+    DIVIDE(CurrentRequests - PriorMonthRequests, PriorMonthRequests, 0)
+
+// Counts requests in the seven-day window ending on the last selected date.
+[Rolling 7-Day Requests] =
+CALCULATE(
+    [Total Requests],
+    DATESINPERIOD(
+        'Dim_Date'[Date],
+        MAX('Dim_Date'[Date]),
+        -7,
+        DAY
+    )
+)
+
+// ============================================================================
+// SECTION 2: TOKEN ECONOMICS
+// ============================================================================
+
+// Sums all input and output tokens consumed by requests in context.
+[Total Tokens Consumed] =
+SUM('fact_with_ml'[TotalTokens])
+
+// Calculates average token consumption per request.
+[Avg Tokens Per Request] =
+DIVIDE([Total Tokens Consumed], [Total Requests], 0)
+
+// Sums prompt/input tokens only.
+[Total Input Tokens] =
+SUM('fact_with_ml'[TokensInput])
+
+// Sums completion/output tokens only.
+[Total Output Tokens] =
+SUM('fact_with_ml'[TokensOutput])
+
+// Measures generated output relative to supplied input, avoiding zero-input errors.
+[Token Efficiency Ratio] =
+DIVIDE([Total Output Tokens], [Total Input Tokens], 0)
+
+// Averages each model's output-to-input ratio so high-volume models do not dominate.
+[Avg Token Efficiency by Model] =
+AVERAGEX(
+    VALUES('Dim_Model'[ModelKey]),
+    CALCULATE([Token Efficiency Ratio])
+)
+
+// ============================================================================
+// SECTION 3: COST INTELLIGENCE
+// ============================================================================
+
+// Sums actual API charges recorded for the current context.
+[Total API Cost USD] =
+SUM('fact_with_ml'[CostUSD])
+
+// Calculates actual cost per request.
+[Avg Cost Per Request] =
+DIVIDE([Total API Cost USD], [Total Requests], 0)
+
+// Calculates actual cost per successful request only.
+[Cost Per Successful Request] =
+DIVIDE(
+    CALCULATE([Total API Cost USD], 'fact_with_ml'[SuccessFlag] = 1),
+    [Total Requests (Success Only)],
+    0
+)
+
+// Re-evaluates actual API cost for month-to-date.
+[Cost MTD] =
+CALCULATE(
+    [Total API Cost USD],
+    DATESMTD('Dim_Date'[Date])
+)
+
+// Compares current actual cost with the previous month's actual cost.
+[Cost MoM % Change] =
+VAR CurrentCost = [Total API Cost USD]
+VAR PriorMonthCost =
+    CALCULATE(
+        [Total API Cost USD],
+        DATEADD('Dim_Date'[Date], -1, MONTH)
+    )
+RETURN
+    DIVIDE(CurrentCost - PriorMonthCost, PriorMonthCost, 0)
+
+// Annualizes current MTD spend using elapsed days and the number of days in its month.
+[Projected Monthly Cost] =
+VAR LastDate = MAX('Dim_Date'[Date])
+VAR DaysElapsed = DAY(LastDate)
+VAR DaysInMonth = DAY(EOMONTH(LastDate, 0))
+RETURN
+    DIVIDE([Cost MTD] * DaysInMonth, DaysElapsed, 0)
+
+// Shows each model's share of total selected model cost, ignoring the model row filter.
+[Cost Share by Model %] =
+DIVIDE(
+    [Total API Cost USD],
+    CALCULATE(
+        [Total API Cost USD],
+        REMOVEFILTERS('Dim_Model')
+    ),
+    0
+)
+
+// Recomputes expected cost from input/output tokens and the model's published rates.
+[Theoretical Cost USD] =
+SUMX(
+    'fact_with_ml',
+    DIVIDE('fact_with_ml'[TokensInput], 1000, 0) * 'fact_with_ml'[CostPer1kInput]
+        + DIVIDE('fact_with_ml'[TokensOutput], 1000, 0) * 'fact_with_ml'[CostPer1kOutput]
+)
+
+// Positive values indicate actual spend above token-rate theoretical cost.
+[Cost Variance USD] =
+[Total API Cost USD] - [Theoretical Cost USD]
+
+// Sums actual charges for requests recorded after the client's quota was exceeded.
+[Overage Cost USD] =
+CALCULATE(
+    [Total API Cost USD],
+    'fact_with_ml'[QuotaUtilizationPct] > 100
+)
+
+// ============================================================================
+// SECTION 4: PERFORMANCE METRICS
+// ============================================================================
+
+// Averages request latency in milliseconds.
+[Avg Latency Ms] =
+AVERAGE('fact_with_ml'[LatencyMs])
+
+// Calculates the inclusive 95th percentile over nonblank latency observations.
+[P95 Latency Ms] =
+PERCENTILEX.INC(
+    FILTER(
+        'fact_with_ml',
+        NOT ISBLANK('fact_with_ml'[LatencyMs])
+    ),
+    'fact_with_ml'[LatencyMs],
+    0.95
+)
+
+// Compares average latency for the explicitly designated fast model keys.
+[Avg Latency — Fast Models] =
+CALCULATE(
+    [Avg Latency Ms],
+    'fact_with_ml'[ModelKey] IN { 2, 4, 6 }
+)
+
+// Compares average latency for the explicitly designated premium model keys.
+[Avg Latency — Premium Models] =
+CALCULATE(
+    [Avg Latency Ms],
+    'fact_with_ml'[ModelKey] IN { 1, 3 }
+)
+
+// Expresses successful requests as a share of all requests.
+[Success Rate %] =
+DIVIDE([Total Requests (Success Only)], [Total Requests], 0)
+
+// Calculates success rate in the rolling 30-day window ending on the last selected date.
+[Success Rate — Last 30 Days] =
+VAR LastDate = MAX('Dim_Date'[Date])
+RETURN
+    CALCULATE(
+        [Success Rate %],
+        DATESINPERIOD('Dim_Date'[Date], LastDate, -30, DAY)
+    )
+
+// Compares the current selection's latency with the all-time model average.
+[Latency Variance vs Baseline] =
+VAR CurrentLatency = [Avg Latency Ms]
+VAR BaselineLatency =
+    CALCULATE(
+        [Avg Latency Ms],
+        REMOVEFILTERS('Dim_Date'),
+        REMOVEFILTERS('Dim_Client'),
+        REMOVEFILTERS('Dim_Model'),
+        REMOVEFILTERS('Dim_Feature'),
+        REMOVEFILTERS('Dim_Region'),
+        REMOVEFILTERS('Dim_Subscription')
+    )
+RETURN
+    CurrentLatency - BaselineLatency
+
+// ============================================================================
+// SECTION 5: SATISFACTION ANALYTICS
+// ============================================================================
+
+// Averages only requests that have a recorded satisfaction score.
+[Avg Satisfaction Score] =
+CALCULATE(
+    AVERAGE('fact_with_ml'[SatisfactionScore]),
+    FILTER(
+        'fact_with_ml',
+        NOT ISBLANK('fact_with_ml'[SatisfactionScore])
+    )
+)
+
+// Alias for the rated-request average used by satisfaction visuals.
+[Avg Satisfaction — Rated Only] =
+[Avg Satisfaction Score]
+
+// Measures the percentage of all requests that received a rating.
+[Satisfaction Coverage %] =
+DIVIDE(
+    COUNTROWS(
+        FILTER(
+            'fact_with_ml',
+            NOT ISBLANK('fact_with_ml'[SatisfactionScore])
+        )
+    ),
+    [Total Requests],
+    0
+)
+
+// Measures highly rated requests among rated requests only.
+[High Satisfaction Rate %] =
+VAR RatedRows =
+    FILTER(
+        'fact_with_ml',
+        NOT ISBLANK('fact_with_ml'[SatisfactionScore])
+    )
+RETURN
+    DIVIDE(
+        COUNTROWS(FILTER(RatedRows, 'fact_with_ml'[SatisfactionScore] >= 4.5)),
+        COUNTROWS(RatedRows),
+        0
+    )
+
+// Measures low-rated requests among rated requests only.
+[Low Satisfaction Rate %] =
+VAR RatedRows =
+    FILTER(
+        'fact_with_ml',
+        NOT ISBLANK('fact_with_ml'[SatisfactionScore])
+    )
+RETURN
+    DIVIDE(
+        COUNTROWS(FILTER(RatedRows, 'fact_with_ml'[SatisfactionScore] < 3.5)),
+        COUNTROWS(RatedRows),
+        0
+    )
+
+// Compares rated-request average satisfaction with the preceding month.
+[Satisfaction MoM Change] =
+VAR CurrentSatisfaction = [Avg Satisfaction Score]
+VAR PriorMonthSatisfaction =
+    CALCULATE(
+        [Avg Satisfaction Score],
+        DATEADD('Dim_Date'[Date], -1, MONTH)
+    )
+RETURN
+    CurrentSatisfaction - PriorMonthSatisfaction
+
+// ============================================================================
+// SECTION 6: CLIENT & SUBSCRIPTION ANALYTICS
+// ============================================================================
+
+// Counts distinct clients represented by at least one request in context.
+[Active Clients] =
+DISTINCTCOUNT('fact_with_ml'[ClientKey])
+
+// Counts clients whose onboarding date falls in the month of the latest selected date.
+[New Clients This Month] =
+VAR LastDate = MAX('Dim_Date'[Date])
+VAR MonthStart = DATE(YEAR(LastDate), MONTH(LastDate), 1)
+VAR MonthEnd = EOMONTH(LastDate, 0)
+RETURN
+    COUNTROWS(
+        FILTER(
+            ALL('Dim_Client'),
+            'Dim_Client'[OnboardingDate] >= MonthStart
+                && 'Dim_Client'[OnboardingDate] <= MonthEnd
+        )
+    )
+
+// Divides request volume by the number of clients active in the same context.
+[Avg Requests Per Client] =
+DIVIDE([Total Requests], [Active Clients], 0)
+
+// Calculates the share of selected cost generated by the ten highest-cost clients.
+[Revenue Concentration — Top 10 Clients %] =
+VAR ClientCosts =
+    ADDCOLUMNS(
+        ALLSELECTED('Dim_Client'[ClientKey]),
+        "__ClientCost", CALCULATE([Total API Cost USD])
+    )
+VAR TopClients = TOPN(10, ClientCosts, [__ClientCost], DESC)
+RETURN
+    DIVIDE(
+        SUMX(TopClients, [__ClientCost]),
+        CALCULATE([Total API Cost USD], ALLSELECTED('Dim_Client'[ClientKey])),
+        0
+    )
+
+// Calculates selected API cost attributable to Enterprise subscriptions.
+[Enterprise Client Cost Share %] =
+DIVIDE(
+    CALCULATE(
+        [Total API Cost USD],
+        'Dim_Subscription'[TierName] = "Enterprise"
+    ),
+    [Total API Cost USD],
+    0
+)
+
+// Averages the row-level quota utilization percentage.
+[Avg Quota Utilization %] =
+AVERAGE('fact_with_ml'[QuotaUtilizationPct])
+
+// Counts distinct clients having at least one over-quota request.
+[Clients Over Quota] =
+CALCULATE(
+    DISTINCTCOUNT('fact_with_ml'[ClientKey]),
+    'fact_with_ml'[IsOverQuota] = TRUE()
+)
+
+// Counts distinct clients whose ML churn risk score exceeds 70.
+[Churn Risk — High] =
+CALCULATE(
+    DISTINCTCOUNT('fact_with_ml'[ClientKey]),
+    'fact_with_ml'[ChurnRiskScore] > 70
+)
+
+// ============================================================================
+// SECTION 7: FEATURE & MODEL ANALYTICS
+// ============================================================================
+
+// Measures premium-feature requests as a percentage of all requests.
+[Premium Feature Usage %] =
+DIVIDE(
+    CALCULATE([Total Requests], 'Dim_Feature'[IsPremium] = TRUE()),
+    [Total Requests],
+    0
+)
+
+// Returns the name of the model with the most requests in the current context.
+[Most Used Model] =
+VAR ModelUsage =
+    ADDCOLUMNS(
+        VALUES('Dim_Model'[ModelName]),
+        "__Requests", CALCULATE([Total Requests])
+    )
+VAR TopModel = TOPN(1, ModelUsage, [__Requests], DESC, 'Dim_Model'[ModelName], ASC)
+RETURN
+    CONCATENATEX(TopModel, 'Dim_Model'[ModelName], ", ")
+
+// Divides distinct models used by the six-model catalog size.
+[Model Diversity Index] =
+DIVIDE(DISTINCTCOUNT('fact_with_ml'[ModelKey]), 6, 0)
+
+// Measures adoption of features categorized as workflow automation.
+[Automation Feature Adoption %] =
+DIVIDE(
+    CALCULATE(
+        [Total Requests],
+        'Dim_Feature'[FeatureCategory] = "Automation"
+    ),
+    [Total Requests],
+    0
+)
+
+// Measures adoption of features categorized as vision.
+[Vision Feature Adoption %] =
+DIVIDE(
+    CALCULATE(
+        [Total Requests],
+        'Dim_Feature'[FeatureCategory] = "Vision"
+    ),
+    [Total Requests],
+    0
+)
+
+// ============================================================================
+// SECTION 8: TIME INTELLIGENCE
+// ============================================================================
+
+// Compares weekend request volume with weekday request volume.
+[Weekend vs Weekday Request Ratio] =
+DIVIDE(
+    CALCULATE([Total Requests], 'Dim_Date'[IsWeekend] = TRUE()),
+    CALCULATE([Total Requests], 'Dim_Date'[IsWeekend] = FALSE()),
+    0
+)
+
+// Measures the share of requests made during the inclusive 09:00-17:59 window.
+[Peak Hour Traffic %] =
+DIVIDE(
+    CALCULATE(
+        [Total Requests],
+        'fact_with_ml'[HourOfDay] >= 9,
+        'fact_with_ml'[HourOfDay] <= 17
+    ),
+    [Total Requests],
+    0
+)
+
+// Averages daily request totals over the dates visible in the current context.
+[Avg Daily Requests] =
+AVERAGEX(
+    VALUES('Dim_Date'[Date]),
+    CALCULATE([Total Requests])
+)
+
+// Returns the weekday label with the greatest request volume.
+[Busiest Day of Week] =
+VAR DayUsage =
+    ADDCOLUMNS(
+        VALUES('Dim_Date'[DayOfWeek]),
+        "__Requests", CALCULATE([Total Requests])
+    )
+VAR TopDay = TOPN(1, DayUsage, [__Requests], DESC, 'Dim_Date'[DayOfWeek], ASC)
+RETURN
+    CONCATENATEX(TopDay, 'Dim_Date'[DayOfWeek], ", ")
