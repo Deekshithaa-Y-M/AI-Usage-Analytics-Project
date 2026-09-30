@@ -27,9 +27,11 @@ From the repository root:
 ```powershell
 python src/data_pipeline.py
 python src/ml_scoring.py
+python src/forecasting.py
 ```
 
 The data pipeline reads from `data/raw/` and writes analytical tables to `data/processed/`. The ML pipeline reads `data/processed/fact_master.csv`, writes `data/processed/fact_with_ml.csv`, and creates model files under `models/`.
+The forecasting pipeline reads the processed fact table and writes Prophet forecasts, ARIMA metrics, and plots to `outputs/forecasts/`.
 
 ## Data Notes
 
