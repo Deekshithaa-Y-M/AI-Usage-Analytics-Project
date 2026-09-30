@@ -20,3 +20,6 @@ venv/
 # OS junk
 .DS_Store
 Thumbs.db
+
+#for learning purposes
+private_docs/
