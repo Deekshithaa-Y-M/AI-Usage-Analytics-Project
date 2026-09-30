@@ -1,0 +1,69 @@
+// AI Usage Analytics Dashboard - calculated columns
+
+// ============================================================================
+// FACT_AI_USAGE CALCULATED COLUMNS
+// ============================================================================
+
+'Fact_AI_Usage'[HourOfDay] =
+INT('Fact_AI_Usage'[TimeKey] / 100)
+
+'Fact_AI_Usage'[IsPeakHour] =
+IF(
+    'Fact_AI_Usage'[HourOfDay] >= 9
+        && 'Fact_AI_Usage'[HourOfDay] <= 17,
+    1,
+    0
+)
+
+'Fact_AI_Usage'[ResponseSpeedTier] =
+SWITCH(
+    TRUE(),
+    'Fact_AI_Usage'[LatencyMs] < 400, "Fast",
+    'Fact_AI_Usage'[LatencyMs] < 800, "Medium",
+    "Slow"
+)
+
+'Fact_AI_Usage'[SatisfactionBucket] =
+SWITCH(
+    TRUE(),
+    ISBLANK('Fact_AI_Usage'[SatisfactionScore]), "Not Rated",
+    'Fact_AI_Usage'[SatisfactionScore] >= 4.5, "High (4.5-5.0)",
+    'Fact_AI_Usage'[SatisfactionScore] >= 3.5, "Mid (3.5-4.4)",
+    "Low (<3.5)"
+)
+
+'Fact_AI_Usage'[TokenEfficiencyRatio] =
+DIVIDE(
+    'Fact_AI_Usage'[TokensOutput],
+    'Fact_AI_Usage'[TokensInput],
+    0
+)
+
+'Fact_AI_Usage'[CostCategory] =
+SWITCH(
+    TRUE(),
+    'Fact_AI_Usage'[CostUSD] = 0, "Free",
+    'Fact_AI_Usage'[CostUSD] < 0.005, "Micro",
+    'Fact_AI_Usage'[CostUSD] < 0.02, "Low",
+    'Fact_AI_Usage'[CostUSD] < 0.05, "Medium",
+    "High"
+)
+
+// ============================================================================
+// DIM_CLIENT CALCULATED COLUMNS
+// ============================================================================
+
+'Dim_Client'[ClientAgeBand] =
+VAR ClientAgeDays =
+    DATEDIFF('Dim_Client'[OnboardingDate], TODAY(), DAY)
+RETURN
+    SWITCH(
+        TRUE(),
+        ClientAgeDays < 30, "<30 Days",
+        ClientAgeDays < 90, "30-90 Days",
+        ClientAgeDays < 180, "90-180 Days",
+        "180+ Days"
+    )
+
+'Dim_Client'[IsEnterprise] =
+IF('Dim_Client'[CompanySize] = "Enterprise", 1, 0)
