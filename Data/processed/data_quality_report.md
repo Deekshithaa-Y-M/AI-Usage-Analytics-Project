@@ -5,6 +5,7 @@
 - Fact rows: 13,500
 - Dimension tables: 6
 - Quality checks with findings: 1
+- Critical findings: 0
 
 ## Findings
 

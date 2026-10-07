@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: ai-usage-analytics-dashboard
+Version: 0.1.0
+Summary: Data and machine-learning pipelines for an AI usage analytics dashboard
+Requires-Python: >=3.10
+Requires-Dist: joblib>=1.3
+Requires-Dist: numpy>=1.24
+Requires-Dist: pandas>=2.0
+Requires-Dist: prophet>=1.1.5
+Requires-Dist: holidays>=0.34
+Requires-Dist: scikit-learn>=1.3
+Requires-Dist: statsmodels>=0.14

@@ -76,7 +76,8 @@ The findings below are calculated from the included processed snapshot, covering
 │       ├── agg_model_performance.csv
 │       ├── agg_region_monthly.csv
 │       ├── client_churn_scores.csv
-│       ├── data_quality_report.md
+│       ├── data_quality_report.json
+├── data_quality_report.md
 │       ├── fact_master.csv
 │       └── fact_with_ml.csv
 ├── models/
@@ -122,7 +123,11 @@ The `models/` and `outputs/` artifacts are generated locally and can be recreate
 	python src/data_pipeline.py
 	```
 
-	This validates the raw fact/dimension tables, enriches the fact table, and writes exports to `data/processed/`.
+	This validates the raw fact/dimension tables, enriches the fact table, and writes exports to
+	`data/processed/`. Validation findings are written to both the human-readable
+	`data_quality_report.md` and machine-readable `data_quality_report.json`. Critical
+	validation failures are reported and cause the command to exit unsuccessfully without
+	deleting invalid source records.
 
 3. **Train scoring models and create ML features.**
 

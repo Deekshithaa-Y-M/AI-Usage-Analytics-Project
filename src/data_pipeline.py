@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,49 @@ DIMENSION_FILES: dict[str, str] = {
     "subscription": "Dim_Subscription.csv",
 }
 FACT_FILE = "Fact_AI_Usage.csv"
+FACT_REQUIRED_COLUMNS = {
+    "UsageID", "DateKey", "TimeKey", "ClientKey", "ModelKey", "FeatureKey",
+    "RegionKey", "SubscriptionTierKey", "TokensInput", "TokensOutput",
+    "TotalTokens", "LatencyMs", "CostUSD", "SuccessFlag",
+    "SatisfactionScore", "RequestType",
+}
+DIMENSION_REQUIRED_COLUMNS = {
+    "date": {"DateKey", "Date", "Year", "Quarter", "Month", "MonthName",
+             "WeekOfYear", "DayOfWeek", "IsWeekend"},
+    "client": {"ClientKey", "ClientID", "ClientName", "Industry", "CompanySize",
+               "OnboardingDate", "AccountManager", "Status"},
+    "model": {"ModelKey", "ModelName", "Provider", "ModelFamily", "ContextWindow",
+              "CostPer1kInput", "CostPer1kOutput", "IsLatest"},
+    "feature": {"FeatureKey", "FeatureName", "FeatureCategory", "IsPremium"},
+    "region": {"RegionKey", "RegionName", "Country", "TimeZoneOffset"},
+    "subscription": {"SubscriptionTierKey", "TierName", "MonthlyQuotaTokens",
+                     "OverageRateMultiplier", "SupportLevel"},
+}
+DIMENSION_KEY_COLUMNS = {
+    "date": "DateKey", "client": "ClientKey", "model": "ModelKey",
+    "feature": "FeatureKey", "region": "RegionKey",
+    "subscription": "SubscriptionTierKey",
+}
+FOREIGN_KEYS = {
+    "DateKey": ("date", "DateKey"), "ClientKey": ("client", "ClientKey"),
+    "ModelKey": ("model", "ModelKey"), "FeatureKey": ("feature", "FeatureKey"),
+    "RegionKey": ("region", "RegionKey"),
+    "SubscriptionTierKey": ("subscription", "SubscriptionTierKey"),
+}
+NUMERIC_FACT_COLUMNS = {
+    "UsageID", "DateKey", "TimeKey", "ClientKey", "ModelKey", "FeatureKey",
+    "RegionKey", "SubscriptionTierKey", "TokensInput", "TokensOutput",
+    "TotalTokens", "LatencyMs", "CostUSD", "SuccessFlag",
+}
+CRITICAL_COLUMNS = [
+    "UsageID", "DateKey", "ClientKey", "ModelKey", "FeatureKey",
+    "RegionKey", "SubscriptionTierKey", "TokensInput", "TokensOutput",
+    "TotalTokens", "LatencyMs", "CostUSD", "SuccessFlag",
+]
+
+
+class DataQualityError(ValueError):
+    """Raised when source data cannot be safely enriched."""
 
 
 def load_tables(raw_dir: Path) -> dict[str, pd.DataFrame]:
@@ -31,26 +75,76 @@ def load_tables(raw_dir: Path) -> dict[str, pd.DataFrame]:
 
 
 def validate_data_quality(tables: dict[str, pd.DataFrame]) -> dict[str, list[str]]:
-    """Inspect referential integrity, completeness, numeric validity, and outliers."""
+    """Inspect schema, integrity, completeness, numeric validity, and outliers."""
     fact = tables["fact"]
     issues: dict[str, list[str]] = {}
-    critical_columns = [
-        "UsageID", "DateKey", "ClientKey", "ModelKey", "FeatureKey",
-        "RegionKey", "SubscriptionTierKey", "TokensInput", "TokensOutput",
-        "TotalTokens", "LatencyMs", "CostUSD", "SuccessFlag",
-    ]
-    for column in critical_columns:
+
+    required_columns = {"fact": FACT_REQUIRED_COLUMNS, **DIMENSION_REQUIRED_COLUMNS}
+    for table_name, columns in required_columns.items():
+        missing = sorted(columns - set(tables[table_name].columns))
+        if missing:
+            issues[f"missing_columns_{table_name}"] = [
+                f"{len(missing)} required columns missing: {', '.join(missing)}"
+            ]
+
+    for column in NUMERIC_FACT_COLUMNS & set(fact.columns):
+        if not pd.api.types.is_numeric_dtype(fact[column]):
+            issues[f"invalid_type_fact_{column}"] = [
+                f"expected numeric data, found {fact[column].dtype}"
+            ]
+    for table_name, key_column in DIMENSION_KEY_COLUMNS.items():
+        dimension = tables[table_name]
+        if key_column in dimension:
+            if not pd.api.types.is_numeric_dtype(dimension[key_column]):
+                issues[f"invalid_type_{table_name}_{key_column}"] = [
+                    f"expected numeric data, found {dimension[key_column].dtype}"
+                ]
+            null_key_count = int(dimension[key_column].isna().sum())
+            if null_key_count:
+                issues[f"null_primary_key_{table_name}"] = [
+                    f"{null_key_count} null {key_column} values"
+                ]
+            duplicate_count = int(dimension[key_column].duplicated(keep=False).sum())
+            if duplicate_count:
+                issues[f"duplicate_primary_key_{table_name}"] = [
+                    f"{duplicate_count} rows have duplicate {key_column} values"
+                ]
+                issues[f"many_to_one_cardinality_{table_name}"] = [
+                    f"{duplicate_count} rows prevent a many-to-one join on {key_column}"
+                ]
+
+    for table_name, column in (("date", "Date"), ("client", "OnboardingDate")):
+        if column in tables[table_name]:
+            invalid_date_count = int(
+                pd.to_datetime(tables[table_name][column], errors="coerce").isna().sum()
+            )
+            if invalid_date_count:
+                issues[f"invalid_type_{table_name}_{column}"] = [
+                    f"{invalid_date_count} values are not valid dates"
+                ]
+
+    for column in CRITICAL_COLUMNS:
+        if column not in fact:
+            continue
         null_count = int(fact[column].isna().sum())
         if null_count:
             issues[f"null_{column}"] = [f"{null_count} null values"]
 
-    foreign_keys = {
-        "DateKey": ("date", "DateKey"), "ClientKey": ("client", "ClientKey"),
-        "ModelKey": ("model", "ModelKey"), "FeatureKey": ("feature", "FeatureKey"),
-        "RegionKey": ("region", "RegionKey"),
-        "SubscriptionTierKey": ("subscription", "SubscriptionTierKey"),
-    }
-    for fact_column, (dimension_name, dimension_column) in foreign_keys.items():
+    if "UsageID" in fact:
+        duplicate_count = int(fact.duplicated(keep=False).sum())
+        if duplicate_count:
+            issues["duplicate_fact_records"] = [
+                f"{duplicate_count} rows are part of duplicate fact records"
+            ]
+        duplicate_id_count = int(fact["UsageID"].duplicated(keep=False).sum())
+        if duplicate_id_count:
+            issues["duplicate_fact_usage_ids"] = [
+                f"{duplicate_id_count} rows have duplicate UsageID values"
+            ]
+
+    for fact_column, (dimension_name, dimension_column) in FOREIGN_KEYS.items():
+        if fact_column not in fact or dimension_column not in tables[dimension_name]:
+            continue
         valid_keys = set(tables[dimension_name][dimension_column].dropna())
         invalid_count = int((~fact[fact_column].isin(valid_keys)).sum())
         if invalid_count:
@@ -59,10 +153,14 @@ def validate_data_quality(tables: dict[str, pd.DataFrame]) -> dict[str, list[str
             ]
 
     for column in ["TokensInput", "TokensOutput", "TotalTokens", "LatencyMs", "CostUSD"]:
+        if column not in fact:
+            continue
         negative_count = int((fact[column] < 0).sum())
         if negative_count:
             issues[f"negative_{column}"] = [f"{negative_count} negative values"]
 
+    if "CostUSD" not in fact:
+        return issues
     cost_mean = fact["CostUSD"].mean()
     cost_std = fact["CostUSD"].std()
     if pd.notna(cost_std) and cost_std > 0:
@@ -72,6 +170,11 @@ def validate_data_quality(tables: dict[str, pd.DataFrame]) -> dict[str, list[str
                 f"{outlier_count} values exceed mean + 3 standard deviations"
             ]
     return issues
+
+
+def _is_critical_issue(name: str) -> bool:
+    """Return whether a finding means enrichment cannot be trusted."""
+    return name != "cost_outliers"
 
 
 def enrich_fact_table(tables: dict[str, pd.DataFrame]) -> pd.DataFrame:
@@ -191,10 +294,35 @@ def write_quality_report(
         f"- Dimension tables: {len(DIMENSION_FILES)}",
         f"- Quality checks with findings: {len(issues)}", "", "## Findings", "",
     ]
+    lines.insert(
+        7,
+        f"- Critical findings: {sum(_is_critical_issue(name) for name in issues)}",
+    )
     lines.extend(
         f"- **{name}**: {'; '.join(details)}" for name, details in issues.items()
     ) if issues else lines.append("- No quality issues detected.")
     output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_json_quality_report(
+    issues: dict[str, list[str]], tables: dict[str, pd.DataFrame], output_path: Path
+) -> None:
+    """Write a machine-readable version of the source quality checks."""
+    report = {
+        "fact_rows": len(tables["fact"]),
+        "dimension_tables": len(DIMENSION_FILES),
+        "finding_count": len(issues),
+        "critical_failure": any(_is_critical_issue(name) for name in issues),
+        "findings": [
+            {
+                "name": name,
+                "severity": "critical" if _is_critical_issue(name) else "warning",
+                "details": details,
+            }
+            for name, details in issues.items()
+        ],
+    }
+    output_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
 
 def run_pipeline(raw_dir: Path, processed_dir: Path) -> pd.DataFrame:
@@ -203,12 +331,28 @@ def run_pipeline(raw_dir: Path, processed_dir: Path) -> pd.DataFrame:
     tables = load_tables(raw_dir)
     issues = validate_data_quality(tables)
     print(f"Quality checks complete: {len(issues)} finding(s)")
-    master = enrich_fact_table(tables)
     processed_dir.mkdir(parents=True, exist_ok=True)
+    write_quality_report(issues, tables, processed_dir / "data_quality_report.md")
+    write_json_quality_report(issues, tables, processed_dir / "data_quality_report.json")
+    critical_issues = {
+        name: details for name, details in issues.items() if _is_critical_issue(name)
+    }
+    if critical_issues:
+        raise DataQualityError(
+            "Critical data quality validation failed: "
+            + "; ".join(f"{name}: {details[0]}" for name, details in critical_issues.items())
+        )
+    master = enrich_fact_table(tables)
+    if len(master) != len(tables["fact"]):
+        issues["fact_row_count_changed_after_enrichment"] = [
+            f"expected {len(tables['fact'])} rows, found {len(master)}"
+        ]
+        write_quality_report(issues, tables, processed_dir / "data_quality_report.md")
+        write_json_quality_report(issues, tables, processed_dir / "data_quality_report.json")
+        raise DataQualityError(issues["fact_row_count_changed_after_enrichment"][0])
     master.to_csv(processed_dir / "fact_master.csv", index=False)
     for filename, aggregate in build_aggregates(master).items():
         aggregate.to_csv(processed_dir / filename, index=False)
-    write_quality_report(issues, tables, processed_dir / "data_quality_report.md")
     print(f"Wrote enriched master with {len(master):,} rows to {processed_dir}")
     return master
 

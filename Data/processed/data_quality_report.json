@@ -1,0 +1,15 @@
+{
+  "fact_rows": 13500,
+  "dimension_tables": 6,
+  "finding_count": 1,
+  "critical_failure": false,
+  "findings": [
+    {
+      "name": "cost_outliers",
+      "severity": "warning",
+      "details": [
+        "348 values exceed mean + 3 standard deviations"
+      ]
+    }
+  ]
+}
