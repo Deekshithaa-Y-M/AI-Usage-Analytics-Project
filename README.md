@@ -169,3 +169,9 @@ The `models/` and `outputs/` artifacts are generated locally and can be recreate
 - Add a **dbt transformation layer** with source tests, documented lineage, and warehouse-native incremental models.
 - Add **MLflow experiment tracking** for model versions, parameters, metrics, artifacts, and promotion decisions.
 - Expand evaluation with time-based cross-validation, calibrated churn probabilities, drift monitoring, and explicit missing-feedback bias analysis.
+
+## Documentation
+
+- [Data dictionary](docs/data_dictionary.md): raw-table grain, keys, columns, types, meanings, missing values, and derived fields.
+- [Architecture](docs/architecture.md): data lineage from raw CSVs through ETL, ML, forecasting, Power BI, and Streamlit.
+- [Limitations](docs/limitations.md): interpretation boundaries for the portfolio data, labels, models, forecasts, and prototype workflow.
