@@ -1,0 +1,3 @@
+Model,PositiveCount,NegativeCount,ClassBalancePositivePct,Precision,Recall,F1,ROCAUC,PRAUC,Validation
+Constant baseline model,0,80,0.0,0.0,0.0,0.0,,,Holdout unavailable: fewer than two observations in one class.
+Proxy rule baseline,0,80,0.0,0.0,0.0,0.0,,,Holdout unavailable: fewer than two observations in one class.
