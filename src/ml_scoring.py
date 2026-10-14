@@ -42,6 +42,8 @@ SATISFACTION_FEATURES = [
 ANOMALY_FEATURES = ["CostUSD", "TotalTokens", "LatencyMs"]
 RANDOM_SEED = 42
 EVALUATION_DIR = Path("outputs/evaluation")
+ANOMALY_CONTAMINATION = 0.02
+RULE_OUTLIER_IQR_MULTIPLIER = 1.5
 SATISFACTION_MIN = 1.0
 SATISFACTION_MAX = 5.0
 
@@ -452,18 +454,129 @@ def train_satisfaction_model(
     return scored, metrics
 
 
-def detect_anomalies(master: pd.DataFrame, model_dir: Path) -> pd.DataFrame:
-    """Fit Isolation Forest and append anomaly flags and higher-is-more-anomalous scores."""
+def _anomaly_summary(
+    scored: pd.DataFrame, thresholds: dict[str, float], configured_contamination: float
+) -> pd.DataFrame:
+    """Build machine-readable anomaly counts and transparent pattern summaries."""
+    total_count = len(scored)
+    statistical = scored["IsStatisticalAnomaly"]
+    rule_based = scored["IsRuleBasedOutlier"]
+    summary_rows: list[dict[str, Any]] = []
+
+    def add_summary(
+        summary_type: str, pattern: str, count: int, threshold: float | str = "",
+        notes: str = "",
+    ) -> None:
+        summary_rows.append({
+            "SummaryType": summary_type,
+            "Pattern": pattern,
+            "Count": count,
+            "Percentage": float(count / total_count * 100) if total_count else 0.0,
+            "Threshold": threshold,
+            "Notes": notes,
+        })
+
+    add_summary(
+        "configuration", "Isolation Forest contamination", 0,
+        configured_contamination,
+        "Configured expected proportion; not a confirmed incident rate.",
+    )
+    add_summary("population", "Total scored requests", total_count)
+    add_summary("statistical_signal", "Statistical anomaly", int(statistical.sum()))
+    add_summary("rule_signal", "Rule-based outlier", int(rule_based.sum()))
+    add_summary(
+        "comparison", "Both statistical anomaly and rule-based outlier",
+        int((statistical & rule_based).sum()),
+    )
+    add_summary(
+        "comparison", "Statistical anomaly only",
+        int((statistical & ~rule_based).sum()),
+    )
+    add_summary(
+        "comparison", "Rule-based outlier only",
+        int((rule_based & ~statistical).sum()),
+    )
+
+    for feature in ANOMALY_FEATURES:
+        add_summary(
+            "rule_pattern", f"{feature} above Tukey upper fence",
+            int(scored[f"RuleOutlier_{feature}"].sum()),
+            thresholds[feature],
+            "Rule baseline: value > Q3 + 1.5 * IQR.",
+        )
+
+    pattern_columns = [f"RuleOutlier_{feature}" for feature in ANOMALY_FEATURES]
+    pattern_counts = (
+        scored.loc[rule_based, pattern_columns].astype(int).value_counts()
+        if rule_based.any() else pd.Series(dtype="int64")
+    )
+    for pattern_values, count in pattern_counts.items():
+        pattern_features = [
+            feature for feature, value in zip(ANOMALY_FEATURES, pattern_values)
+            if value
+        ]
+        add_summary(
+            "common_pattern",
+            " + ".join(pattern_features),
+            int(count),
+            notes="Features exceeding their transparent Tukey upper fences.",
+        )
+    return pd.DataFrame(summary_rows)
+
+
+def detect_anomalies(
+    master: pd.DataFrame,
+    model_dir: Path,
+    evaluation_dir: Path = EVALUATION_DIR,
+) -> pd.DataFrame:
+    """Fit anomaly signals for CostUSD, TotalTokens, and LatencyMs.
+
+    Isolation Forest is the statistical signal. The rule baseline independently
+    marks values above each feature's Q3 + 1.5*IQR Tukey upper fence. Neither
+    signal confirms fraud, failure, or a production incident.
+    """
     anomaly_model = Pipeline([
         ("scale", StandardScaler()),
-        ("model", IsolationForest(contamination=0.02, random_state=42, n_jobs=-1)),
+        ("model", IsolationForest(
+            contamination=ANOMALY_CONTAMINATION,
+            random_state=RANDOM_SEED,
+            n_jobs=-1,
+        )),
     ])
     anomaly_model.fit(master[ANOMALY_FEATURES])
     scored = master.copy()
-    scored["IsAnomaly"] = anomaly_model.predict(master[ANOMALY_FEATURES]) == -1
-    scored["AnomalyScore"] = -anomaly_model.decision_function(master[ANOMALY_FEATURES])
+    scored["IsStatisticalAnomaly"] = anomaly_model.predict(
+        master[ANOMALY_FEATURES]
+    ) == -1
+    scored["StatisticalAnomalyScore"] = -anomaly_model.decision_function(
+        master[ANOMALY_FEATURES]
+    )
+
+    thresholds: dict[str, float] = {}
+    for feature in ANOMALY_FEATURES:
+        first_quartile = float(master[feature].quantile(0.25))
+        third_quartile = float(master[feature].quantile(0.75))
+        upper_fence = third_quartile + RULE_OUTLIER_IQR_MULTIPLIER * (
+            third_quartile - first_quartile
+        )
+        thresholds[feature] = upper_fence
+        scored[f"RuleOutlier_{feature}"] = master[feature] > upper_fence
+    rule_columns = [f"RuleOutlier_{feature}" for feature in ANOMALY_FEATURES]
+    scored["IsRuleBasedOutlier"] = scored[rule_columns].any(axis=1)
+
+    evaluation_dir.mkdir(parents=True, exist_ok=True)
+    _anomaly_summary(scored, thresholds, ANOMALY_CONTAMINATION).to_csv(
+        evaluation_dir / "anomaly_summary.csv", index=False
+    )
     joblib.dump(anomaly_model, model_dir / "anomaly_model.pkl")
-    print(f"Anomaly detection flagged {int(scored['IsAnomaly'].sum()):,} requests.")
+    statistical_count = int(scored["IsStatisticalAnomaly"].sum())
+    statistical_pct = statistical_count / len(scored) * 100 if len(scored) else 0.0
+    print(
+        f"Statistical anomaly signal flagged {statistical_count:,} requests "
+        f"({statistical_pct:.2f}%; configured contamination="
+        f"{ANOMALY_CONTAMINATION:.2%}). "
+        f"Rule-based outlier signal flagged {int(scored['IsRuleBasedOutlier'].sum()):,}."
+    )
     return scored
 
 

@@ -1,0 +1,18 @@
+SummaryType,Pattern,Count,Percentage,Threshold,Notes
+configuration,Isolation Forest contamination,0,0.0,0.02,Configured expected proportion; not a confirmed incident rate.
+population,Total scored requests,13500,100.0,,
+statistical_signal,Statistical anomaly,270,2.0,,
+rule_signal,Rule-based outlier,1285,9.518518518518519,,
+comparison,Both statistical anomaly and rule-based outlier,270,2.0,,
+comparison,Statistical anomaly only,0,0.0,,
+comparison,Rule-based outlier only,1015,7.518518518518519,,
+rule_pattern,CostUSD above Tukey upper fence,855,6.333333333333334,0.039150000000000004,Rule baseline: value > Q3 + 1.5 * IQR.
+rule_pattern,TotalTokens above Tukey upper fence,885,6.555555555555556,5231.0,Rule baseline: value > Q3 + 1.5 * IQR.
+rule_pattern,LatencyMs above Tukey upper fence,78,0.5777777777777777,1168.0,Rule baseline: value > Q3 + 1.5 * IQR.
+common_pattern,CostUSD + TotalTokens,518,3.8370370370370366,,Features exceeding their transparent Tukey upper fences.
+common_pattern,TotalTokens,362,2.6814814814814816,,Features exceeding their transparent Tukey upper fences.
+common_pattern,CostUSD,327,2.422222222222222,,Features exceeding their transparent Tukey upper fences.
+common_pattern,LatencyMs,66,0.4888888888888889,,Features exceeding their transparent Tukey upper fences.
+common_pattern,CostUSD + LatencyMs,7,0.05185185185185185,,Features exceeding their transparent Tukey upper fences.
+common_pattern,CostUSD + TotalTokens + LatencyMs,3,0.022222222222222223,,Features exceeding their transparent Tukey upper fences.
+common_pattern,TotalTokens + LatencyMs,2,0.014814814814814815,,Features exceeding their transparent Tukey upper fences.
