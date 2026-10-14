@@ -80,6 +80,36 @@ analysis, and monitoring for false positives and false negatives. Those labels
 are not present in this project, so this model should remain an exploratory
 operational signal.
 
+## Anomaly detection
+
+The anomaly detector is an exploratory request-level signal, not a fraud,
+failure, or production-incident detector. It uses these input features:
+
+- `CostUSD`
+- `TotalTokens`
+- `LatencyMs`
+
+The primary statistical method is an Isolation Forest with
+`contamination=0.02` and `random_state=42`. Contamination is the configured
+expected proportion used by the model, not a claim about the true incident
+rate. The output columns `IsStatisticalAnomaly` and
+`StatisticalAnomalyScore` identify and rank statistical anomaly signals;
+`StatisticalAnomalyScore` is higher for more unusual observations.
+
+For transparent comparison, the pipeline also applies a separate rule-based
+outlier baseline to each input feature. A request is marked
+`RuleOutlier_<feature>` when its value is above that feature's Tukey upper
+fence (`Q3 + 1.5 * IQR`); `IsRuleBasedOutlier` is true when any feature crosses
+its fence. Agreement and disagreement between the two signals are reported
+without treating either one as a confirmed incident.
+
+`outputs/evaluation/anomaly_summary.csv` is a machine-readable summary of the
+configured contamination, total signal counts and percentages, comparison
+between statistical and rule-based signals, feature-level thresholds, and the
+most common rule-based feature patterns. All results use the fixed seed `42`
+where randomness is involved. Thresholds and signals are descriptive for this
+snapshot and are not calibrated for automated intervention.
+
 ## Satisfaction prediction
 
 The satisfaction model is a random-forest regression model trained only on
