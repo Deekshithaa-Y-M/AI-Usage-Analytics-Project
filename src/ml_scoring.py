@@ -42,6 +42,8 @@ SATISFACTION_FEATURES = [
 ANOMALY_FEATURES = ["CostUSD", "TotalTokens", "LatencyMs"]
 RANDOM_SEED = 42
 EVALUATION_DIR = Path("outputs/evaluation")
+SATISFACTION_MIN = 1.0
+SATISFACTION_MAX = 5.0
 
 
 def load_master(input_path: Path) -> pd.DataFrame:
@@ -283,43 +285,170 @@ def _satisfaction_preprocessor() -> ColumnTransformer:
 
 
 def train_satisfaction_model(
-    master: pd.DataFrame, model_dir: Path
+    master: pd.DataFrame, model_dir: Path,
+    evaluation_dir: Path = EVALUATION_DIR,
 ) -> tuple[pd.DataFrame, dict[str, float]]:
-    """Train a random-forest regressor and predict satisfaction for every request."""
+    """Train and audit satisfaction predictions for rated and unrated requests."""
     labeled = master[master["SatisfactionScore"].notna()].copy()
     if len(labeled) < 10:
         raise ValueError("At least 10 rated requests are required for satisfaction modeling.")
     features = labeled[SATISFACTION_FEATURES]
     target = labeled["SatisfactionScore"]
     x_train, x_test, y_train, y_test = train_test_split(
-        features, target, test_size=0.2, random_state=42
+        features, target, test_size=0.2, random_state=RANDOM_SEED
     )
     regressor = Pipeline([
         ("preprocess", _satisfaction_preprocessor()),
         ("model", RandomForestRegressor(
-            n_estimators=250, min_samples_leaf=2, random_state=42, n_jobs=-1
+            n_estimators=250, min_samples_leaf=2, random_state=RANDOM_SEED, n_jobs=-1
         )),
     ])
     regressor.fit(x_train, y_train)
-    test_predictions = regressor.predict(x_test)
+    test_predictions_raw = regressor.predict(x_test)
+    test_predictions = np.clip(
+        test_predictions_raw, SATISFACTION_MIN, SATISFACTION_MAX
+    )
+    baseline_value = float(y_train.mean())
+    baseline_predictions = np.full(len(y_test), baseline_value)
     metrics = {
         "RMSE": float(np.sqrt(mean_squared_error(y_test, test_predictions))),
         "MAE": float(mean_absolute_error(y_test, test_predictions)),
         "R2": float(r2_score(y_test, test_predictions)),
     }
-    folds = KFold(n_splits=5, shuffle=True, random_state=42)
+    folds = KFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED)
     cv_rmse = np.sqrt(-cross_val_score(
         regressor, features, target, cv=folds, scoring="neg_mean_squared_error", n_jobs=1
     ))
     metrics["CV_RMSE"] = float(cv_rmse.mean())
+    evaluation_dir.mkdir(parents=True, exist_ok=True)
+
+    evaluation_rows: list[dict[str, Any]] = []
+    for model_name, predictions in [
+        ("Training-mean baseline", baseline_predictions),
+        ("Random forest regressor", test_predictions),
+    ]:
+        evaluation_rows.append({
+            "EvaluationType": "holdout_model_comparison",
+            "Model": model_name,
+            "GroupDimension": "Overall",
+            "Group": "Rated holdout",
+            "SampleSize": int(len(y_test)),
+            "MAE": float(mean_absolute_error(y_test, predictions)),
+            "RMSE": float(np.sqrt(mean_squared_error(y_test, predictions))),
+            "R2": float(r2_score(y_test, predictions)),
+            "CV_RMSE": metrics["CV_RMSE"] if model_name == "Random forest regressor" else np.nan,
+            "PredictionRangeValid": bool(
+                np.all((predictions >= SATISFACTION_MIN) & (predictions <= SATISFACTION_MAX))
+            ),
+        })
+
+    test_with_predictions = labeled.loc[
+        x_test.index, ["ClientKey"] + SATISFACTION_FEATURES
+    ].copy()
+    test_with_predictions["ObservedSatisfactionScore"] = y_test.to_numpy()
+    test_with_predictions["PredictedSatisfactionScore"] = test_predictions
+    for dimension in ["ModelKey", "ClientKey", "RegionKey", "FeatureKey", "RequestType"]:
+        for group, group_rows in test_with_predictions.groupby(dimension, dropna=False):
+            if len(group_rows) < 10:
+                continue
+            group_actual = group_rows["ObservedSatisfactionScore"]
+            group_predicted = group_rows["PredictedSatisfactionScore"]
+            evaluation_rows.append({
+                "EvaluationType": "holdout_group_performance",
+                "Model": "Random forest regressor",
+                "GroupDimension": dimension,
+                "Group": str(group),
+                "SampleSize": int(len(group_rows)),
+                "MAE": float(mean_absolute_error(group_actual, group_predicted)),
+                "RMSE": float(np.sqrt(mean_squared_error(group_actual, group_predicted))),
+                "R2": (
+                    float(r2_score(group_actual, group_predicted))
+                    if group_actual.nunique() > 1 else np.nan
+                ),
+                "CV_RMSE": np.nan,
+                "PredictionRangeValid": bool(
+                    np.all((group_predicted >= SATISFACTION_MIN)
+                           & (group_predicted <= SATISFACTION_MAX))
+                ),
+            })
+
+    scored = master.copy()
+    scored_predictions_raw = regressor.predict(scored[SATISFACTION_FEATURES])
+    scored_predictions = np.clip(
+        scored_predictions_raw, SATISFACTION_MIN, SATISFACTION_MAX
+    )
+    scored["SatisfactionPredicted"] = scored_predictions
+    scored["SatisfactionPredictionPopulation"] = np.where(
+        scored["SatisfactionScore"].notna(), "Observed score available",
+        "Previously unrated request",
+    )
+    evaluation_rows.extend([
+        {
+            "EvaluationType": "prediction_population_summary",
+            "Model": "Random forest regressor",
+            "GroupDimension": "Population",
+            "Group": "Observed satisfaction scores",
+            "SampleSize": int(labeled.shape[0]),
+            "MAE": np.nan, "RMSE": np.nan, "R2": np.nan, "CV_RMSE": np.nan,
+            "PredictionRangeValid": bool(np.all(
+                (scored.loc[scored["SatisfactionScore"].notna(), "SatisfactionPredicted"]
+                 >= SATISFACTION_MIN)
+                & (scored.loc[scored["SatisfactionScore"].notna(), "SatisfactionPredicted"]
+                   <= SATISFACTION_MAX)
+            )),
+        },
+        {
+            "EvaluationType": "prediction_population_summary",
+            "Model": "Random forest regressor",
+            "GroupDimension": "Population",
+            "Group": "Predictions for previously unrated requests",
+            "SampleSize": int(master["SatisfactionScore"].isna().sum()),
+            "MAE": np.nan, "RMSE": np.nan, "R2": np.nan, "CV_RMSE": np.nan,
+            "PredictionRangeValid": bool(np.all(
+                (scored.loc[scored["SatisfactionScore"].isna(), "SatisfactionPredicted"]
+                 >= SATISFACTION_MIN)
+                & (scored.loc[scored["SatisfactionScore"].isna(), "SatisfactionPredicted"]
+                   <= SATISFACTION_MAX)
+            )),
+        },
+    ])
+    pd.DataFrame(evaluation_rows).to_csv(
+        evaluation_dir / "satisfaction_evaluation.csv", index=False
+    )
+
+    coverage_rows: list[dict[str, Any]] = []
+    for dimension in ["ModelKey", "ClientKey", "RegionKey", "FeatureKey", "RequestType"]:
+        for group, group_rows in master.groupby(dimension, dropna=False):
+            labeled_count = int(group_rows["SatisfactionScore"].notna().sum())
+            total_count = int(len(group_rows))
+            coverage_rows.append({
+                "Dimension": dimension,
+                "Group": str(group),
+                "TotalRequests": total_count,
+                "LabeledRequests": labeled_count,
+                "UnlabeledRequests": total_count - labeled_count,
+                "LabelCoveragePct": float(labeled_count / total_count * 100),
+                "ObservedSatisfactionMean": float(
+                    group_rows["SatisfactionScore"].mean()
+                ) if labeled_count else np.nan,
+            })
+    coverage_rows.append({
+        "Dimension": "Overall",
+        "Group": "All requests",
+        "TotalRequests": int(len(master)),
+        "LabeledRequests": int(master["SatisfactionScore"].notna().sum()),
+        "UnlabeledRequests": int(master["SatisfactionScore"].isna().sum()),
+        "LabelCoveragePct": float(master["SatisfactionScore"].notna().mean() * 100),
+        "ObservedSatisfactionMean": float(target.mean()),
+    })
+    pd.DataFrame(coverage_rows).to_csv(
+        evaluation_dir / "satisfaction_coverage.csv", index=False
+    )
     print(
         f"Satisfaction model: RMSE={metrics['RMSE']:.3f}, MAE={metrics['MAE']:.3f}, "
         f"R2={metrics['R2']:.3f}, CV RMSE={metrics['CV_RMSE']:.3f}"
     )
     joblib.dump(regressor, model_dir / "satisfaction_model.pkl")
-
-    scored = master.copy()
-    scored["SatisfactionPredicted"] = regressor.predict(scored[SATISFACTION_FEATURES])
     return scored, metrics
 
 

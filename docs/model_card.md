@@ -79,3 +79,45 @@ They would support temporal backtesting, calibration, intervention-cost
 analysis, and monitoring for false positives and false negatives. Those labels
 are not present in this project, so this model should remain an exploratory
 operational signal.
+
+## Satisfaction prediction
+
+The satisfaction model is a random-forest regression model trained only on
+requests with an observed `SatisfactionScore`. The target is not imputed for
+training. The model uses request attributes such as model, feature, region,
+subscription tier, tokens, latency, cost, success, time, and request type.
+Preprocessing is fitted inside the training pipeline, and the fixed seed is
+`42`.
+
+The pipeline compares the random forest with a training-set mean baseline and
+reports MAE, RMSE, and R2 on a reproducible 20% holdout. It also reports
+performance for model, client, region, feature, and request-type groups when
+the holdout group has at least 10 rated requests. Predictions are constrained
+to the valid satisfaction range of 1–5; this is a validity check and not a
+claim that the model is calibrated.
+
+`outputs/evaluation/satisfaction_coverage.csv` distinguishes labeled
+requests from previously unrated requests and reports coverage overall and by
+model, client, region, feature, and request type. The observed score remains
+in `SatisfactionScore`. Model output is in `SatisfactionPredicted`, and
+`SatisfactionPredictionPopulation` identifies whether an observed score was
+available or the row was previously unrated. The model's prediction for an
+unrated request is an estimated satisfaction score, not actual user feedback.
+
+`outputs/evaluation/satisfaction_evaluation.csv` contains baseline/model
+holdout comparison, sufficiently sized group-level performance, and separate
+population summaries for observed-score rows and previously unrated rows.
+Metrics cannot be computed for unrated rows because no observed target exists.
+
+### Selection bias and uncertainty
+
+Satisfaction labels are incomplete (and may be volunteered by users who are
+more or less engaged), so the rated subset may not represent all requests.
+Coverage differences across models, clients, regions, features, and request
+types can therefore create selection bias. Holdout and cross-validation
+metrics quantify agreement with observed scores in rated requests only; they
+do not establish accuracy for previously unrated requests or future feedback.
+Small group samples produce unstable estimates, which is why group metrics
+are emitted only at the documented minimum. Predictions should be treated as
+uncertain prioritization signals and should not be presented as measured user
+sentiment.
