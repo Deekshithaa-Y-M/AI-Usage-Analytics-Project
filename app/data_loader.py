@@ -26,9 +26,15 @@ ARTIFACT_PATHS = {
     "data quality report": Path("data/processed/data_quality_report.json"),
     "forecast model comparison": Path("outputs/evaluation/forecast_model_comparison.csv"),
     "anomaly summary": Path("outputs/evaluation/anomaly_summary.csv"),
+    "satisfaction coverage": Path("outputs/evaluation/satisfaction_coverage.csv"),
     "cost forecast": Path("outputs/forecasts/forecast_cost_30d.csv"),
     "request forecast": Path("outputs/forecasts/forecast_requests_30d.csv"),
     "token forecast": Path("outputs/forecasts/forecast_tokens_30d.csv"),
+    "client dimension": Path("data/raw/Dim_Client.csv"),
+    "model dimension": Path("data/raw/Dim_Model.csv"),
+    "feature dimension": Path("data/raw/Dim_Feature.csv"),
+    "region dimension": Path("data/raw/Dim_Region.csv"),
+    "subscription dimension": Path("data/raw/Dim_Subscription.csv"),
 }
 
 
@@ -80,7 +86,13 @@ def load_dashboard_data() -> dict[str, Any]:
         "quality": load_json("data quality report"),
         "forecast_comparison": load_csv("forecast model comparison"),
         "anomalies": load_csv("anomaly summary"),
+        "satisfaction_coverage": load_csv("satisfaction coverage"),
         "cost_forecast": load_csv("cost forecast"),
         "request_forecast": load_csv("request forecast"),
         "token_forecast": load_csv("token forecast"),
+        "client_dimension": load_csv("client dimension"),
+        "model_dimension": load_csv("model dimension"),
+        "feature_dimension": load_csv("feature dimension"),
+        "region_dimension": load_csv("region dimension"),
+        "subscription_dimension": load_csv("subscription dimension"),
     }
