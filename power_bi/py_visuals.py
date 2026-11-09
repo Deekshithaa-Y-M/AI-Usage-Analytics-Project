@@ -1,6 +1,5 @@
 import matplotlib.pyplot as plt
 import pandas as pd
-# 'dataset' is the Power BI injected dataframe
 dataset = dataset  # already injected by Power BI  # pyright: ignore[reportUndefinedVariable]
 
 import numpy as np
