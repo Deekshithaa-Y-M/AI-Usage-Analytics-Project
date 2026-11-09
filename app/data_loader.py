@@ -29,9 +29,6 @@ ARTIFACT_PATHS = {
     "cost forecast": Path("outputs/forecasts/forecast_cost_30d.csv"),
     "request forecast": Path("outputs/forecasts/forecast_requests_30d.csv"),
     "token forecast": Path("outputs/forecasts/forecast_tokens_30d.csv"),
-    "churn model": Path("models/churn_model.pkl"),
-    "satisfaction model": Path("models/satisfaction_model.pkl"),
-    "anomaly model": Path("models/anomaly_model.pkl"),
 }
 
 
