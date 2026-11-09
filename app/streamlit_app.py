@@ -200,7 +200,7 @@ def show_data_quality(data: dict[str, object], usage: pd.DataFrame) -> None:
     st.dataframe(pd.DataFrame({"Column": list(summary["missing_values"]), "Missing": list(summary["missing_values"].values())}), hide_index=True)
     st.subheader("Outlier summary")
     st.dataframe(pd.DataFrame({"Measure": list(summary["outliers"]), "Outlier count": list(summary["outliers"].values())}), hide_index=True)
-    st.markdown("[Read the data-quality methodology](../docs/data_dictionary.md)")
+    st.info("For explanations of the data pipeline and quality checks, open the Methodology page from the sidebar.")
 
 
 def show_methodology() -> None:
