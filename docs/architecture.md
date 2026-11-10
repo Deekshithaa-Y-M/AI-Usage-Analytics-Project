@@ -1,5 +1,7 @@
 # Architecture and Data Lineage
 
+Synthetic data: all figures and results in this section are derived from a generated dataset and are for portfolio demonstration only.
+
 The project is a reproducible analytical prototype built around CSV handoffs.
 It is not described here as a deployed service. The core lineage is:
 

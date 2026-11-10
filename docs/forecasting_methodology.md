@@ -1,5 +1,7 @@
 # Forecasting methodology
 
+Synthetic data: all figures and results in this section are derived from a generated dataset and are for portfolio demonstration only.
+
 ## Data frequency
 
 The processed fact table is aggregated to a complete **daily** calendar. Days

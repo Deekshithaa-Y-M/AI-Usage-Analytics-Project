@@ -1,5 +1,7 @@
 ## 📊 DAX Measures
 
+Synthetic data: all figures and results in this section are derived from a generated dataset and are for portfolio demonstration only.
+
 The following DAX measures were created to evaluate AI platform usage, request performance, latency, and cost efficiency using the `Fact_AI_Usage` table.
 
 I only used raw data for the dashboard pages. However, for the python visuals, I imported the processed data, and all the relvant CSV files from outputs folder. The python script (py_visuals.py) was used for their generation.

@@ -1,19 +1,20 @@
 # Limitations and Interpretation Boundaries
 
+Synthetic data: all figures and results in this section are derived from a generated dataset and are for portfolio demonstration only.
+
 This project is an analytical prototype built from a fixed portfolio-data
 snapshot. The outputs are useful for demonstrating lineage, feature
 engineering, model evaluation, and dashboard design, but they should not be
 read as validated production business decisions.
 
-## Synthetic or portfolio-data limitations
+## Synthetic-data limitations
 
-The repository does not establish that the raw records represent a complete
-production population, a random sample, or real customer behavior. Values may
-be synthetic, simulated, anonymized, or assembled for portfolio demonstration.
-Counts, costs, model mix, latency, and relationships should therefore be
-interpreted as properties of this included snapshot. They should not be
-generalized to an actual customer base or used as an external benchmark
-without provenance and independent validation.
+All records are synthetic and were assembled for portfolio demonstration. The
+repository does not establish that they represent a complete production
+population, a random sample, or real customer behavior. Counts, costs, model mix,
+latency, and relationships describe this included synthetic snapshot only.
+They must not be generalized to an actual customer base or used as an external
+benchmark without independent real-world validation.
 
 ## Proxy-based client disengagement label
 
@@ -65,10 +66,10 @@ evidence about one historical slice, not a guarantee of future accuracy.
 
 ## Analytical prototype versus production system
 
-The current workflow is a reproducible local pipeline of Python scripts, CSV
+The current process is a reproducible local pipeline of Python scripts, CSV
 files, serialized models, Power BI assets, and a local presentation layer. It
 does not by itself provide production ingestion, orchestration, authentication,
-authorization, secrets management, schema evolution, data retention,
+authorization, credential management, schema evolution, data retention,
 observability, alerting, model registry governance, disaster recovery, or
 service-level guarantees. CSV handoffs can also create concurrency and
 freshness issues at larger scale. Production use would require an agreed data

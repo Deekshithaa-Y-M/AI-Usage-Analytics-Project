@@ -1,5 +1,7 @@
 # Data Dictionary
 
+Synthetic data: all figures and results in this section are derived from a generated dataset and are for portfolio demonstration only.
+
 This dictionary describes the CSV contract used by the project. The raw tables are
 stored in [`data/raw/`](../data/raw/). The pipeline preserves the raw request grain
 in `fact_master.csv` and `fact_with_ml.csv`; aggregate files intentionally use

@@ -1,5 +1,7 @@
 # Client disengagement risk scoring using an operational proxy outcome
 
+Synthetic data: all figures and results in this section are derived from a generated dataset and are for portfolio demonstration only.
+
 ## Intended use
 
 This model is an analytical prioritization signal for customer-success and

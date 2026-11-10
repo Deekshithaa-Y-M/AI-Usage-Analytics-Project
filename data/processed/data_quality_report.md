@@ -1,5 +1,7 @@
 # AI Usage Data Quality Report
 
+Synthetic data: all figures and results in this section are derived from a generated dataset and are for portfolio demonstration only.
+
 ## Run Summary
 
 - Fact rows: 13,500
