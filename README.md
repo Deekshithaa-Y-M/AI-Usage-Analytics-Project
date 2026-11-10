@@ -132,8 +132,8 @@ The `models/` and `outputs/` artifacts are generated locally and can be recreate
 3. **Train scoring models and create ML features.**
 
 	```powershell
-	python src/ml_scoring.py
-	```
+		python src/ml_scoring.py
+		```
 
 	This writes `fact_with_ml.csv`, `client_churn_scores.csv`, and model artifacts to `models/`.
 
@@ -145,7 +145,17 @@ The `models/` and `outputs/` artifacts are generated locally and can be recreate
 
 	This writes 30-day Prophet and ARIMA outputs to `outputs/forecasts/`.
 
-5. **Open the dashboard.** Open `power_bi/dashboard.pbix` in Power BI Desktop and refresh the imported processed tables. The DAX definitions and Python visual examples are in the same directory. For local Python visual development, install the plotting extras with `python -m pip install matplotlib seaborn` if they are not already available.
+5. **Run the SQL analysis.** SQLTools is optional. From the repository root, run:
+
+	```powershell
+	python sql/run_analysis.py
+	```
+
+	This refreshes `sql/ai_usage.duckdb` from the raw CSV files and verifies that
+	the persistent `fact_master` view contains the expected request rows. You can
+	then open that database file in any DuckDB-compatible SQL client.
+
+6. **Open the dashboard.** Open `power_bi/dashboard.pbix` in Power BI Desktop and refresh the imported processed tables. The DAX definitions and Python visual examples are in the same directory. For local Python visual development, install the plotting extras with `python -m pip install matplotlib seaborn` if they are not already available.
 
 ## Skills Demonstrated
 

@@ -1,15 +1,33 @@
--- SQL Analysis Scripts
---
--- Import the seven raw CSVs as tables named Fact_AI_Usage, Dim_Date,
--- Dim_Client, Dim_Model, Dim_Feature, Dim_Region, and Dim_Subscription.
--- DuckDB example:
---   CREATE TABLE Fact_AI_Usage AS SELECT * FROM read_csv_auto('data/raw/Fact_AI_Usage.csv');
---   CREATE TABLE Dim_Date AS SELECT * FROM read_csv_auto('data/raw/Dim_Date.csv');
--- Repeat for the remaining six files. In SQLite, use .import in the same
--- table names. This view reconstructs the analysis grain from those raw tables.
+-- DuckDB analysis script.
+-- Run from the repository root with:
+--   python sql/run_analysis.py
+-- This imports the raw CSV files, creates the fact_master view,
+-- runs all analyses, and refreshes sql/ai_usage.duckdb.
+-- Do not run this through SQLTools or an in-memory connection. Click Run All
+CREATE OR REPLACE TABLE Fact_AI_Usage AS
+SELECT * FROM read_csv_auto('data/raw/Fact_AI_Usage.csv');
+
+CREATE OR REPLACE TABLE Dim_Date AS
+SELECT * FROM read_csv_auto('data/raw/Dim_Date.csv');
+
+CREATE OR REPLACE TABLE Dim_Client AS
+SELECT * FROM read_csv_auto('data/raw/Dim_Client.csv');
+
+CREATE OR REPLACE TABLE Dim_Model AS
+SELECT * FROM read_csv_auto('data/raw/Dim_Model.csv');
+
+CREATE OR REPLACE TABLE Dim_Feature AS
+SELECT * FROM read_csv_auto('data/raw/Dim_Feature.csv');
+
+CREATE OR REPLACE TABLE Dim_Region AS
+SELECT * FROM read_csv_auto('data/raw/Dim_Region.csv');
+
+CREATE OR REPLACE TABLE Dim_Subscription AS
+SELECT * FROM read_csv_auto('data/raw/Dim_Subscription.csv');
+
 DROP VIEW IF EXISTS fact_master;
 
-CREATE TEMP VIEW fact_master AS
+CREATE OR REPLACE VIEW fact_master AS
 WITH raw_fact AS (
     SELECT
         f.*,
@@ -35,25 +53,25 @@ WITH raw_fact AS (
 monthly_tokens AS (
     SELECT
         ClientKey,
-        substr(UsageDate, 1, 7) AS UsageMonth,
+        strftime('%Y-%m', UsageDate) AS UsageMonth,
         SUM(TotalTokens) AS MonthlyTokensUsed
     FROM raw_fact
-    GROUP BY ClientKey, substr(UsageDate, 1, 7)
+    GROUP BY ClientKey, strftime('%Y-%m', UsageDate)
 )
 SELECT
     rf.*,
     rf.UsageDate AS Date,
-    substr(rf.UsageDate, 1, 7) AS Month,
+    strftime('%Y-%m', rf.UsageDate) AS Month,
     mt.MonthlyTokensUsed,
     mt.MonthlyTokensUsed * 100.0 / NULLIF(rf.MonthlyQuotaTokens, 0)
         AS QuotaUtilizationPct
 FROM raw_fact rf
 JOIN monthly_tokens mt
   ON mt.ClientKey = rf.ClientKey
- AND mt.UsageMonth = substr(rf.UsageDate, 1, 7);
+ AND mt.UsageMonth = strftime('%Y-%m', rf.UsageDate);
 
 -- 1. Running seven-day cost average per model.
--- Aggregate to one row per model/day before applying the seven-row window.
+-- Aggregate to one row per model/day before applying the calendar-day window.
 WITH daily_model_cost AS (
     SELECT
         ModelKey,
@@ -80,7 +98,7 @@ SELECT
     AVG(DailyCostUSD) OVER (
         PARTITION BY ModelKey
         ORDER BY Date
-        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+        RANGE BETWEEN INTERVAL 6 DAY PRECEDING AND CURRENT ROW
     ) AS Rolling7DayAvgCostUSD
 FROM with_previous_day
 ORDER BY ModelName, Date;
@@ -113,12 +131,10 @@ client_rfm AS (
     SELECT
         ClientKey,
         ClientName,
-        CAST(
-            (
-                CAST(strftime('%s', (SELECT MaxDate FROM analysis_end)) AS BIGINT)
-                - CAST(strftime('%s', MAX(Date)) AS BIGINT)
-            ) / 86400
-            AS INTEGER
+        date_diff(
+            'day',
+            CAST(MAX(Date) AS DATE),
+            CAST((SELECT MaxDate FROM analysis_end) AS DATE)
         ) AS RecencyDays,
         COUNT(*) AS Frequency,
         SUM(CostUSD) AS MonetaryUSD
@@ -195,9 +211,10 @@ FROM with_prior_month
 ORDER BY RegionName, Month;
 
 -- 6. Upsell opportunities: high quota utilization outside Enterprise.
-SELECT
+SELECT DISTINCT
     ClientKey,
     ClientName,
+        Month,
         TierName,
         QuotaUtilizationPct,
         MonthlyTokensUsed,
@@ -343,14 +360,14 @@ LIMIT 20;
 WITH clients AS (
     SELECT
         ClientKey,
-        substr(OnboardingDate, 1, 7) AS CohortMonth
+        strftime('%Y-%m', OnboardingDate) AS CohortMonth
     FROM fact_master
     GROUP BY ClientKey, OnboardingDate
 ),
 activity AS (
     SELECT DISTINCT
         ClientKey,
-        substr(Date, 1, 7) AS ActivityMonth
+        strftime('%Y-%m', Date) AS ActivityMonth
     FROM fact_master
 ),
 cohort_sizes AS (
